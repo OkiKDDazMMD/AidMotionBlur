@@ -1,0 +1,442 @@
+// DAZ Studio version 4.10.0.123 filetype DAZ Script
+
+(function(){
+
+	var oTimeStep = Scene.getTimeStep();
+	var nTimeStep = oTimeStep.valueOf();
+
+	var oAnimRange = Scene.getAnimRange();
+	var nEnd = oAnimRange.end.valueOf();
+
+	var nTotal = nEnd / nTimeStep;
+
+	if( nTotal<32 || nTotal>32 ){
+		MessageBox.critical( String( "now Total=%1. Set Total 33" ).arg(nTotal+1) , "Warning", "&OK");
+		return null;
+	}
+
+	// Global Objects
+	// Render manager
+	var g_oRenderMgr = App.getRenderMgr();
+	var oRenderOptions = g_oRenderMgr.getRenderOptions();
+
+	var g_nState = 0;
+	var a2Frame = new Array( 5 );
+	var aNumImage = [ 3, 5, 9, 17, 33 ];
+
+	a2Frame[0] = [ 0, 16, 32 ];
+	a2Frame[1] = [ 8, 24 ];
+	a2Frame[2] = [ 4, 12, 20, 28 ];
+	a2Frame[3] = [ 2, 6, 10, 14, 18, 22, 26, 30 ];
+	a2Frame[4] = [ 1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 23, 25, 27, 29, 31 ];
+
+
+	//
+	var g_sScriptFileName = DzFile(getScriptFileName());
+	var sInitializeFileName = g_sScriptFileName.path() + "/." + g_sScriptFileName.baseName() + ".ini";
+	var g_oInitializeFile = DzFile( sInitializeFileName );
+	var sDirImgFile;
+	var sTempImgFilename = g_oRenderMgr.getLastSavedRenderPath()
+	if(sTempImgFilename != ""){
+		sDirImgFile = sTempImgFilename;
+	}else{
+		if( g_oRenderMgr.getNumRenderDirectories()>0 ){
+			sDirImgFile = g_oRenderMgr.getRenderDirectoryPath(0);
+		}
+		else{
+			sDirImgFile = g_sScriptFileName.path();
+		}
+	}
+
+
+	//Load Initialize Data
+	var g_InitializeData = loadData(g_oInitializeFile);
+	if (!g_InitializeData){
+		//
+		g_InitializeData = Object();
+
+		//
+		g_InitializeData.state = 0;
+
+		//
+		g_InitializeData.start = true
+
+		//
+		var sImgFilename = oRenderOptions.renderImgFilename;
+		if(sImgFilename != ""){
+			var oImgFilename = DzFile(sImgFilename);
+			sDirImgFile = oImgFilename.path();
+			g_InitializeData.filename = oImgFilename.baseName();
+		}
+		else{
+			g_InitializeData.filename = "";
+		}
+
+		g_InitializeData.dir = sDirImgFile
+
+		//
+		saveData(g_InitializeData, g_oInitializeFile);
+	}
+
+	g_nState = (g_InitializeData.state)+1
+
+	// Create a basic dialog
+	var oDlg = new DzBasicDialog();
+
+	// Get the wrapped widget for the dialog
+	var oDlgWgt = oDlg.getWidget();
+	
+	// Set the title of the dialog
+	oDlg.caption = "Aid MotionBlur";
+	
+	// Strip the space for a settings key
+	var sKey = oDlg.caption.replace( / /g, "" ) + "Dlg";
+	
+	// Set an [unique] object name on the wrapped dialog widget;
+	// this is used for recording position and size separately
+	// from all other [uniquely named] DzBasicDialog instances
+	oDlgWgt.objectName = sKey;
+
+	var oGBDlg = new DzGroupBox( oDlg );
+	var wGridLayout = new DzGridLayout(oGBDlg)
+
+	//
+	var wVGBDirName = new DzVGroupBox( oGBDlg );
+	wVGBDirName.title = "Folder Name :";
+	var g_wEditDirName = new DzLineEdit( wVGBDirName );
+	g_wEditDirName.minWidth = 200;
+	g_wEditDirName.text = g_InitializeData.dir;
+	g_wEditDirName.readOnly = true
+	var wButtonDate = addButtonOnGroupBox( wVGBDirName, "Select Folder", selectFolder);
+	wGridLayout.addWidget(wVGBDirName, 0, 0, 1, 3);
+
+	//
+	var wVGBFileName = new DzVGroupBox( oGBDlg );
+	wVGBFileName.title = "File Name :";
+	var g_wEditFileName = new DzLineEdit( wVGBFileName );
+	g_wEditFileName.minWidth = 200;
+	g_wEditFileName.text = g_InitializeData.filename;
+	var wButtonDate = addButtonOnGroupBox( wVGBFileName, "Date", inputDateFileName);
+	wGridLayout.addWidget(wVGBFileName, 1, 0, 1, 3);
+
+	//
+	var wLabelState = new DzLabel( oGBDlg );
+	if(g_InitializeData.start){
+		wLabelState.text = "Start";
+	}else{
+		wLabelState.text = "Next";
+	}
+	wLabelState.alignment = DzWidget.AlignCenter;
+	wGridLayout.addWidget(wLabelState, 2, 0, 1, 3);
+
+	//
+	var wLabel1 = new DzLabel( oGBDlg );
+	if(g_InitializeData.start){
+		wLabel1.text = "Start";
+	}else{
+		wLabel1.text = "Previous";
+	}
+	wGridLayout.addWidget(wLabel1, 3, 0, 1, 1);
+	//
+	var wLabel2 = new DzLabel( oGBDlg );
+	wLabel2.text = "Next";
+	wGridLayout.addWidget(wLabel2, 3, 1, 1, 1);
+	//
+	var wLabel3 = new DzLabel( oGBDlg );
+	wLabel3.text = "Output";
+	wGridLayout.addWidget(wLabel3, 3, 2, 1, 1);
+
+	//
+	var wLabelPrevious = new DzLabel( oGBDlg );
+	wLabelPrevious.alignment = DzWidget.AlignCenter;
+	wLabelPrevious.text = aNumImage[g_InitializeData.state].toString();
+	wGridLayout.addWidget(wLabelPrevious, 4, 0, 1, 1);
+	//
+	var wLabelNext = new DzLabel( oGBDlg );
+	wLabelNext.alignment = DzWidget.AlignCenter;
+	wLabelNext.text = aNumImage[g_nState].toString();
+	wGridLayout.addWidget(wLabelNext, 4, 1, 1, 1);
+	//
+	var wLabelOutput = new DzLabel( oGBDlg );
+	wLabelOutput.alignment = DzWidget.AlignCenter;
+	if(g_InitializeData.start){
+		wLabelOutput.text = "3";
+	}else{
+		wLabelOutput.text = numOutput();
+	}
+	wGridLayout.addWidget(wLabelOutput, 4, 2, 1, 1);
+
+	//
+	var wButtonDown = addButtonOnGroupBox( oGBDlg, "Down", downNumber);
+	wButtonDown.enabled = false;
+	wGridLayout.addWidget(wButtonDown, 5, 0, 1, 1);
+	//
+	var wButtonStart = addButtonOnGroupBox( oGBDlg, "Start", start);
+	wGridLayout.addWidget(wButtonStart, 5, 1, 1, 1);
+	//
+	var wButtonUp = addButtonOnGroupBox( oGBDlg, "Up", upNumber);
+	wGridLayout.addWidget(wButtonUp, 5, 2, 1, 1);
+
+	var wButtonRenderStart = addButtonOnGroupBox( oGBDlg, "Start Rendering", renderingStart);
+	wGridLayout.addWidget(wButtonRenderStart, 6, 0, 1, 3);
+
+
+//http://docs.daz3d.com/doku.php/artzone/wiki/user/rbtwhiz/technotes/daz_script/node_properties/start
+//Getting the properties associated with a node.
+
+
+	// Add the GroupBox to the dialog
+	oDlg.addWidget( oGBDlg, 0, DzWidget.AlignCenter );
+
+	// Get the minimum size of the dialog
+	var sizeHint = oDlgWgt.minimumSizeHint;
+	
+	// Set the fixed size of the dialog
+//	oDlg.setFixedSize( sizeHint.width, sizeHint.height );
+	
+	// Set the text on the accept button
+	oDlg.setAcceptButtonText("Close");
+	// Hide the cancel button
+	oDlg.showCancelButton( false );
+
+	oDlg.exec();
+
+
+
+/*********************************************************************/
+// 
+/*********************************************************************/
+function loadData(oLoadFile)
+{
+	if (! oLoadFile.exists()){
+	    return false;
+	}
+
+	oLoadFile.open(DzFile.ReadOnly);
+	var sJSONInit = oLoadFile.read();
+	oLoadFile.close();
+	var obj = JSON.parse( sJSONInit );
+	return obj;
+}
+
+/*********************************************************************/
+// 
+/*********************************************************************/
+function saveData(obj, oSaveFile){
+	var sJSONData = JSON.stringify(obj, undefined, "\t");
+	oSaveFile.open(DzFile.WriteOnly);
+	oSaveFile.writeLine( sJSONData );
+	oSaveFile.close();
+}
+
+/*********************************************************************/
+//
+/*********************************************************************/
+function addButtonOnGroupBox( gb, text, func ){
+	var wButton = new DzPushButton( gb );
+	wButton.text = text;
+	connect( wButton, "clicked()", func );
+	return( wButton );
+}
+
+/*********************************************************************/
+//
+/*********************************************************************/
+function zeroPadding(nValue)
+{
+	if(nValue<10)
+	{
+		return String( "0%1" ).arg(nValue); 
+	}
+	else
+	{
+		return String( "%1" ).arg(nValue);
+	}
+}
+
+
+/*********************************************************************/
+//
+function getNowDateText()
+{
+	var oNowDate = new Date();
+	return String( "%1%2%3%4%5" ).arg( oNowDate.getFullYear().toString() )
+						.arg( zeroPadding(oNowDate.getMonth()+1) )
+						.arg( zeroPadding(oNowDate.getDate()) )
+						.arg( zeroPadding(oNowDate.getHours()) )
+						.arg( zeroPadding(oNowDate.getMinutes()) );
+}
+
+
+/*********************************************************************/
+//
+/*********************************************************************/
+function inputDateFileName()
+{
+	if(g_wEditFileName.text.length>0){
+		g_wEditFileName.text = g_wEditFileName.text + getNowDateText();
+	}else{
+		g_wEditFileName.text = getNowDateText();
+	}
+
+	g_InitializeData.filename = g_wEditFileName.text;
+}
+
+
+/*********************************************************************/
+//
+/*********************************************************************/
+function start(){
+	g_nState = 1;
+	g_InitializeData.start = true;
+	g_InitializeData.state = 0;
+	changeDisplay();
+}
+
+/*********************************************************************/
+//
+/*********************************************************************/
+function downNumber(){
+	if(g_InitializeData.start){
+		if(g_InitializeData.state>0){
+			--(g_InitializeData.state);
+		}
+	}else{
+		if(g_nState>0){
+			--(g_nState);
+		}
+	}
+	changeDisplay();
+}
+
+/*********************************************************************/
+//
+/*********************************************************************/
+function upNumber(){
+	if(g_InitializeData.start){
+		if(g_InitializeData.state<4){
+			++(g_InitializeData.state);
+		}
+	}else{
+		if(g_nState<4){
+			++(g_nState);
+		}
+	}
+	changeDisplay();
+}
+
+
+/*********************************************************************/
+//
+/*********************************************************************/
+function numOutput(){
+		var tempNumImage = 0;
+		for(var loop = (g_InitializeData.state)+1; loop<g_nState+1; ++loop){
+			tempNumImage = tempNumImage + (a2Frame[loop].length)
+		}
+		return tempNumImage.toString();
+}
+
+
+/*********************************************************************/
+//
+/*********************************************************************/
+function changeDisplay(){
+
+	if(g_InitializeData.start){
+		wLabelState.text = "Start";
+		wLabel1.text = "Start";
+		wLabelPrevious.text = aNumImage[g_InitializeData.state].toString();
+		wLabelNext.text = aNumImage[g_nState].toString();
+		wLabelOutput.text = aNumImage[g_InitializeData.state].toString();
+		if(g_InitializeData.state>3){
+			wButtonUp.enabled = false;
+		}else if(g_InitializeData.state<1){
+			wButtonDown.enabled = false;
+		}else{
+			wButtonUp.enabled = true;
+			wButtonDown.enabled = true;
+		}
+	}else{
+		wLabelState.text = "Next";
+		wLabel1.text = "Previous";
+		wLabelNext.text = aNumImage[g_nState].toString();
+
+		wLabelOutput.text = numOutput();
+
+		if(g_nState>3){
+			wButtonUp.enabled = false;
+		}else if(g_nState<g_InitializeData.state+1){
+			wButtonDown.enabled = false;
+		}else{
+			wButtonUp.enabled = true;
+			wButtonDown.enabled = true;
+		}
+	}
+}
+
+
+/*********************************************************************/
+//
+/*********************************************************************/
+function renderingStart(){
+
+	oDlg.close();
+
+	var tempStart;
+	var tempEnd;
+
+	g_InitializeData.filename = g_wEditFileName.text;
+	g_InitializeData.dir = g_wEditDirName.text;
+
+	if(g_InitializeData.start){
+		g_InitializeData.start = false;
+		tempStart = 0;
+		tempEnd = (g_InitializeData.state)+1
+		if(g_InitializeData.state>3){
+			g_InitializeData.start = true;
+			g_InitializeData.state = 0;
+		}
+	}else{
+		tempStart = (g_InitializeData.state)+1;
+		tempEnd = g_nState+1;
+		g_InitializeData.state = g_nState;
+		if(g_nState>3){
+			g_InitializeData.start = true;
+			g_InitializeData.state = 0;
+		}
+	}
+
+	for( var i=tempStart; i<tempEnd; ++i){
+		for( var j=0; j<a2Frame[i].length; ++j){
+			var tempFrame = a2Frame[i][j];
+			Scene.setFrame( tempFrame );
+			var sImgFilename = g_wEditDirName.text + "/" + g_wEditFileName.text + zeroPadding(tempFrame) + ".png";
+			oRenderOptions.renderImgFilename = sImgFilename;
+			var bResultRendering = g_oRenderMgr.doRender(oRenderOptions);
+			if(!bResultRendering){
+				var bResult = MessageBox.question("Other layer image rendering\n" + "Continue or Cancel" , qsTr("Question"), qsTr("&Continue"), qsTr("&Cancel") );
+				if(bResult!=0){
+					return true;
+				}
+			}
+		}
+	}
+
+	saveData(g_InitializeData, g_oInitializeFile);
+}
+
+
+/*********************************************************************/
+//
+/*********************************************************************/
+function selectFolder(){
+	var path = FileDialog.doDirectoryDialog("Select a Folder for the rendered", "", g_InitializeData.dir );
+	if( path ){
+		g_InitializeData.dir = path;
+		g_wEditDirName.text = path;
+		saveData(g_InitializeData, g_oInitializeFile);
+	}
+}
+
+})();
